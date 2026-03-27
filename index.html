@@ -1,0 +1,289 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Meine Wohnung</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:wght@300;400&family=DM+Sans:wght@300;400;500&display=swap" rel="stylesheet" />
+  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
+  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
+  <style>
+    *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+    body { background: #F5F0EA; font-family: 'DM Sans', sans-serif; color: #1C1917; }
+    input, select, button { font-family: inherit; }
+    a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+
+  <script type="text/babel">
+    const { useState, useEffect } = React;
+
+    // ── Storage ──────────────────────────────────────────────────────────────
+    const STORAGE_KEY = "wohnungsplaner_v1";
+    const load = () => { try { return JSON.parse(localStorage.getItem(STORAGE_KEY)) || null; } catch { return null; } };
+    const persist = (data) => localStorage.setItem(STORAGE_KEY, JSON.stringify(data));
+
+    const DEFAULT_DATA = {
+      rooms: [
+        { id: "r1", name: "Wohnzimmer", icon: "🛋️" },
+        { id: "r2", name: "Schlafzimmer", icon: "🛏️" },
+        { id: "r3", name: "Küche", icon: "🍳" },
+      ],
+      items: [],
+    };
+
+    // ── Utils ────────────────────────────────────────────────────────────────
+    const uid = () => Math.random().toString(36).slice(2, 9);
+    const fmt = (n) => new Intl.NumberFormat("de-DE", { style: "currency", currency: "EUR" }).format(n || 0);
+    const ICONS = ["🛋️","🛏️","🍳","🚿","🪴","📚","🎮","🖥️","👕","🧹","🏠","🪟","🏋️","🎨"];
+
+    // ── Colors ───────────────────────────────────────────────────────────────
+    const C = {
+      cream: "#F5F0EA", dark: "#1C1917", mid: "#78716C", light: "#A8A29E",
+      border: "#E2D9CF", amber: "#B45309", white: "#FDFAF7",
+    };
+
+    // ── Shared styles ────────────────────────────────────────────────────────
+    const inputStyle = {
+      width: "100%", padding: "10px 14px", border: `1px solid ${C.border}`,
+      borderRadius: 6, fontSize: 13, background: "#FAF7F2", outline: "none", color: C.dark,
+    };
+    const primaryBtn = {
+      padding: "10px 20px", background: C.amber, color: "white",
+      border: "none", borderRadius: 6, cursor: "pointer", fontSize: 13, fontWeight: 500, whiteSpace: "nowrap",
+    };
+    const roomBtnStyle = (active) => ({
+      display: "flex", alignItems: "center", justifyContent: "space-between",
+      padding: "9px 12px", margin: "1px 8px", width: "calc(100% - 16px)",
+      border: "none", borderRadius: 6, cursor: "pointer",
+      background: active ? C.amber : "transparent",
+      color: active ? "white" : "#D6D3D1",
+      fontSize: 13, fontWeight: active ? 500 : 300, textAlign: "left",
+    });
+
+    // ── AddItemForm ──────────────────────────────────────────────────────────
+    function AddItemForm({ rooms, currentRoomId, onAdd }) {
+      const [url, setUrl]       = useState("");
+      const [title, setTitle]   = useState("");
+      const [price, setPrice]   = useState("");
+      const [roomId, setRoomId] = useState(currentRoomId || rooms[0]?.id || "");
+
+      const handleAdd = () => {
+        if (!title.trim() || !roomId) return;
+        onAdd({ id: uid(), roomId, url: url.trim(), title: title.trim(), price: parseFloat(price) || 0 });
+        setUrl(""); setTitle(""); setPrice("");
+      };
+
+      return (
+        <div style={{ background: "white", border: `1px solid ${C.border}`, borderRadius: 10, padding: "20px 24px", marginBottom: 24 }}>
+          <div style={{ fontSize: 10, letterSpacing: "0.18em", textTransform: "uppercase", color: C.mid, marginBottom: 14 }}>Artikel hinzufügen</div>
+          <div style={{ marginBottom: 10 }}>
+            <input style={inputStyle} placeholder="Produkt-URL (optional)" value={url} onChange={e => setUrl(e.target.value)} />
+          </div>
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 130px 170px", gap: 8, marginBottom: 12 }}>
+            <input style={inputStyle} placeholder="Titel *" value={title} onChange={e => setTitle(e.target.value)}
+              onKeyDown={e => e.key === "Enter" && handleAdd()} />
+            <input style={inputStyle} placeholder="Preis (€)" type="number" step="0.01" value={price} onChange={e => setPrice(e.target.value)} />
+            <select style={inputStyle} value={roomId} onChange={e => setRoomId(e.target.value)}>
+              {rooms.map(r => <option key={r.id} value={r.id}>{r.icon} {r.name}</option>)}
+            </select>
+          </div>
+          <button style={{ ...primaryBtn, opacity: title.trim() ? 1 : 0.4 }} onClick={handleAdd} disabled={!title.trim()}>
+            Speichern
+          </button>
+        </div>
+      );
+    }
+
+    // ── AddRoomModal ─────────────────────────────────────────────────────────
+    function AddRoomModal({ onClose, onAdd }) {
+      const [name, setName] = useState("");
+      const [icon, setIcon] = useState("🏠");
+      const confirm = () => { if (name.trim()) { onAdd(icon, name.trim()); onClose(); } };
+      return (
+        <div style={{ position: "fixed", inset: 0, background: "rgba(28,25,23,0.55)", display: "flex", alignItems: "center", justifyContent: "center", zIndex: 100 }}>
+          <div style={{ background: "white", borderRadius: 12, padding: 28, width: 360, boxShadow: "0 24px 64px rgba(0,0,0,0.25)" }}>
+            <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 22, fontWeight: 300, marginBottom: 20 }}>Neuer Raum</div>
+            <div style={{ fontSize: 11, color: C.mid, marginBottom: 8 }}>Symbol wählen</div>
+            <div style={{ display: "flex", gap: 6, flexWrap: "wrap", marginBottom: 16 }}>
+              {ICONS.map(ic => (
+                <button key={ic} onClick={() => setIcon(ic)} style={{
+                  fontSize: 20, padding: "5px 8px", border: `2px solid ${icon === ic ? C.amber : C.border}`,
+                  borderRadius: 6, cursor: "pointer", background: icon === ic ? "#FEF3C7" : "white",
+                }}>{ic}</button>
+              ))}
+            </div>
+            <input style={{ ...inputStyle, marginBottom: 16 }} placeholder="Raumname" value={name}
+              onChange={e => setName(e.target.value)} onKeyDown={e => e.key === "Enter" && confirm()} />
+            <div style={{ display: "flex", gap: 8 }}>
+              <button style={primaryBtn} onClick={confirm}>Hinzufügen</button>
+              <button style={{ ...primaryBtn, background: "none", color: C.mid }} onClick={onClose}>Abbrechen</button>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    // ── RoomView ─────────────────────────────────────────────────────────────
+    function RoomView({ room, items, rooms, onAdd, onDelete }) {
+      const total = items.reduce((s, i) => s + (i.price || 0), 0);
+      return (
+        <div>
+          <AddItemForm rooms={rooms} currentRoomId={room.id} onAdd={onAdd} />
+          <div style={{ background: "white", borderRadius: 10, border: `1px solid ${C.border}`, padding: "20px 24px" }}>
+            {items.length === 0 ? (
+              <div style={{ textAlign: "center", padding: "40px 0", color: C.light, fontSize: 14 }}>
+                Noch keine Artikel in diesem Raum.<br />
+                <span style={{ fontSize: 12 }}>Füge oben deinen ersten Artikel hinzu.</span>
+              </div>
+            ) : (
+              <>
+                {items.map(item => (
+                  <div key={item.id} style={{ display: "flex", alignItems: "center", gap: 12, padding: "12px 0", borderBottom: `1px solid ${C.cream}` }}>
+                    <div style={{ fontSize: 20 }}>{room.icon}</div>
+                    <div style={{ flex: 1, overflow: "hidden" }}>
+                      {item.url
+                        ? <a href={item.url} target="_blank" rel="noreferrer" style={{ fontSize: 14, color: C.dark, textDecoration: "none" }}>{item.title}</a>
+                        : <span style={{ fontSize: 14 }}>{item.title}</span>
+                      }
+                      {item.url && <div style={{ fontSize: 11, color: C.light, marginTop: 2, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{item.url}</div>}
+                    </div>
+                    <div style={{ fontSize: 14, fontWeight: 500, color: C.amber, minWidth: 80, textAlign: "right" }}>{item.price ? fmt(item.price) : "—"}</div>
+                    <button onClick={() => onDelete(item.id)} style={{ background: "none", border: "none", cursor: "pointer", color: C.light, fontSize: 20, lineHeight: 1, padding: "0 4px" }}>×</button>
+                  </div>
+                ))}
+                <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", paddingTop: 16 }}>
+                  <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 15, fontWeight: 300, color: C.mid }}>
+                    Summe {room.icon} {room.name}
+                  </span>
+                  <span style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 26, color: C.amber }}>{fmt(total)}</span>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      );
+    }
+
+    // ── SummaryView ──────────────────────────────────────────────────────────
+    function SummaryView({ rooms, items }) {
+      const grand = items.reduce((s, i) => s + (i.price || 0), 0);
+      return (
+        <div>
+          <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fill, minmax(180px, 1fr))", gap: 12, marginBottom: 28 }}>
+            {rooms.map(room => {
+              const roomItems = items.filter(i => i.roomId === room.id);
+              const total = roomItems.reduce((s, i) => s + (i.price || 0), 0);
+              return (
+                <div key={room.id} style={{ background: "white", border: `1px solid ${C.border}`, borderRadius: 10, padding: "18px 20px" }}>
+                  <div style={{ fontSize: 26, marginBottom: 8 }}>{room.icon}</div>
+                  <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 2 }}>{room.name}</div>
+                  <div style={{ fontSize: 11, color: C.light, marginBottom: 14 }}>{roomItems.length} Artikel</div>
+                  <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 24, color: C.amber }}>{fmt(total)}</div>
+                </div>
+              );
+            })}
+            <div style={{ background: C.amber, borderRadius: 10, padding: "18px 20px", color: "white" }}>
+              <div style={{ fontSize: 26, marginBottom: 8 }}>🏠</div>
+              <div style={{ fontSize: 13, fontWeight: 500, marginBottom: 2 }}>Gesamt</div>
+              <div style={{ fontSize: 11, opacity: 0.7, marginBottom: 14 }}>{items.length} Artikel</div>
+              <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 24 }}>{fmt(grand)}</div>
+            </div>
+          </div>
+          {rooms.map(room => {
+            const roomItems = items.filter(i => i.roomId === room.id);
+            if (!roomItems.length) return null;
+            return (
+              <div key={room.id} style={{ background: "white", border: `1px solid ${C.border}`, borderRadius: 10, padding: "18px 24px", marginBottom: 12 }}>
+                <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 18, fontWeight: 300, marginBottom: 14 }}>{room.icon} {room.name}</div>
+                {roomItems.map(item => (
+                  <div key={item.id} style={{ display: "flex", justifyContent: "space-between", padding: "8px 0", borderBottom: `1px solid ${C.cream}`, fontSize: 13 }}>
+                    <span>{item.title}</span>
+                    <span style={{ color: C.amber, fontWeight: 500, marginLeft: 16 }}>{item.price ? fmt(item.price) : "—"}</span>
+                  </div>
+                ))}
+              </div>
+            );
+          })}
+        </div>
+      );
+    }
+
+    // ── App ──────────────────────────────────────────────────────────────────
+    function App() {
+      const [data, setData]           = useState(() => load() || DEFAULT_DATA);
+      const [activeView, setActiveView] = useState("summary");
+      const [showAddRoom, setShowAddRoom] = useState(false);
+
+      useEffect(() => persist(data), [data]);
+
+      const addItem    = (item) => setData(d => ({ ...d, items: [...d.items, item] }));
+      const deleteItem = (id)   => setData(d => ({ ...d, items: d.items.filter(i => i.id !== id) }));
+      const addRoom    = (icon, name) => setData(d => ({ ...d, rooms: [...d.rooms, { id: uid(), name, icon }] }));
+
+      const activeRoom = data.rooms.find(r => r.id === activeView);
+      const grandTotal = data.items.reduce((s, i) => s + (i.price || 0), 0);
+
+      return (
+        <div style={{ display: "flex", minHeight: "100vh" }}>
+          {/* Sidebar */}
+          <div style={{ width: 228, background: C.dark, color: "#F5F0EA", display: "flex", flexDirection: "column", padding: "28px 0", flexShrink: 0 }}>
+            <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 18, fontWeight: 300, letterSpacing: "0.06em", padding: "0 20px 24px", borderBottom: "1px solid #3C3732", lineHeight: 1.4 }}>
+              <span style={{ display: "block", fontSize: 9, letterSpacing: "0.22em", textTransform: "uppercase", color: C.mid, marginBottom: 4 }}>Meine</span>
+              Wohnung
+            </div>
+            <div style={{ fontSize: 9, letterSpacing: "0.2em", textTransform: "uppercase", color: C.mid, padding: "18px 12px 6px" }}>Ansicht</div>
+            <button style={roomBtnStyle(activeView === "summary")} onClick={() => setActiveView("summary")}>
+              <span>📊 Übersicht</span>
+            </button>
+            <div style={{ fontSize: 9, letterSpacing: "0.2em", textTransform: "uppercase", color: C.mid, padding: "18px 12px 6px" }}>Räume</div>
+            {data.rooms.map(r => (
+              <button key={r.id} style={roomBtnStyle(activeView === r.id)} onClick={() => setActiveView(r.id)}>
+                <span>{r.icon} {r.name}</span>
+                <span style={{ fontSize: 11, opacity: 0.45 }}>{data.items.filter(i => i.roomId === r.id).length}</span>
+              </button>
+            ))}
+            <div style={{ marginTop: "auto", padding: "16px 12px" }}>
+              <button onClick={() => setShowAddRoom(true)} style={{
+                width: "100%", padding: "9px 12px", border: "1px dashed #3C3732",
+                borderRadius: 6, background: "none", color: C.mid,
+                fontSize: 12, cursor: "pointer", letterSpacing: "0.04em",
+              }}>+ Raum hinzufügen</button>
+            </div>
+          </div>
+
+          {/* Main */}
+          <div style={{ flex: 1, display: "flex", flexDirection: "column", overflow: "auto" }}>
+            <div style={{ padding: "32px 40px 22px", borderBottom: `1px solid ${C.border}`, background: "#FAF7F2" }}>
+              <div style={{ fontFamily: "'Cormorant Garamond', serif", fontSize: 28, fontWeight: 300 }}>
+                {activeView === "summary" ? "Übersicht" : activeRoom ? `${activeRoom.icon} ${activeRoom.name}` : ""}
+              </div>
+              <div style={{ fontSize: 13, color: C.mid, marginTop: 4 }}>
+                {activeView === "summary"
+                  ? `${data.items.length} Artikel · ${fmt(grandTotal)} gesamt`
+                  : `${data.items.filter(i => i.roomId === activeView).length} Artikel`}
+              </div>
+            </div>
+            <div style={{ padding: "30px 40px", flex: 1 }}>
+              {activeView === "summary"
+                ? <SummaryView rooms={data.rooms} items={data.items} />
+                : activeRoom
+                  ? <RoomView room={activeRoom} items={data.items.filter(i => i.roomId === activeRoom.id)} rooms={data.rooms} onAdd={addItem} onDelete={deleteItem} />
+                  : null
+              }
+            </div>
+          </div>
+
+          {showAddRoom && <AddRoomModal onClose={() => setShowAddRoom(false)} onAdd={addRoom} />}
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
